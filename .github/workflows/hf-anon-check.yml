@@ -1,0 +1,25 @@
+name: Anonymous Hugging Face download regression
+
+on:
+  push:
+    branches:
+      - fix/anonymous-hf-gpt2-download
+  pull_request:
+    paths:
+      - 'gpt2_gate.py'
+      - 'tests/test_hub_download.py'
+      - '.github/workflows/hf-anon-check.yml'
+  workflow_dispatch:
+
+jobs:
+  anonymous-download-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Compile GPT-2 runner
+        run: python -m py_compile gpt2_gate.py
+      - name: Validate anonymous downloads and explicit auth opt-in
+        run: python -m unittest tests.test_hub_download -v
