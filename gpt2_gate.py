@@ -20,11 +20,22 @@ import math
 import os
 import time
 
+# Public GPT-2 and WikiText need no login. Hugging Face otherwise sends a
+# previously saved token automatically, even if its OAuth login has expired.
+# Set this before anything can import huggingface_hub (including transformers).
+# Explicit token=True via --hf-auth still works for user-supplied private models.
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
+
 import numpy as np
 import torch
 import torch.nn as nn
 
 BUDGETS = [0.6, 0.7, 0.8, 0.9]
+
+
+def hub_token_arg(use_auth: bool) -> bool:
+    """By default explicitly ignore stale credentials for public Hub downloads."""
+    return bool(use_auth)
 
 
 # ======================================================================= banded matrix (torch)
@@ -188,7 +199,7 @@ def load_ids(tok, args):
         tr, te = text[:cut], text[cut:]
     else:
         from datasets import load_dataset
-        ds = load_dataset("wikitext", "wikitext-2-raw-v1")
+        ds = load_dataset("Salesforce/wikitext", "wikitext-2-raw-v1", token=hub_token_arg(args.hf_auth))
         tr, te = "\n\n".join(ds["train"]["text"]), "\n\n".join(ds["test"]["text"])
     tr_ids = tok(tr[:2_000_000], return_tensors="pt").input_ids[0]
     te_ids = tok(te, return_tensors="pt").input_ids[0]
@@ -202,6 +213,8 @@ def load_ids(tok, args):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="gpt2")
+    ap.add_argument("--hf-auth", action="store_true",
+                    help="Opt in to your Hugging Face token for a private/gated --model; public GPT-2 uses no login")
     ap.add_argument("--text-file", default=None)
     ap.add_argument("--calib-tokens", type=int, default=32768)
     ap.add_argument("--eval-seqs", type=int, default=16)
@@ -231,8 +244,16 @@ def main():
         ev = torch.randint(0, 500, (4, 64), generator=g)
     else:
         from transformers import AutoTokenizer
-        tok = AutoTokenizer.from_pretrained(args.model)
-        model = GPT2LMHeadModel.from_pretrained(args.model)
+        # Explicit token=False prevents expired saved OAuth tokens from being
+        # sent to these public endpoints. Both files download automatically.
+        print(f"Loading {args.model} from Hugging Face ({'authenticated' if args.hf_auth else 'anonymous/public'}) ...", flush=True)
+        try:
+            tok = AutoTokenizer.from_pretrained(args.model, token=hub_token_arg(args.hf_auth))
+            model = GPT2LMHeadModel.from_pretrained(args.model, token=hub_token_arg(args.hf_auth))
+        except (OSError, ValueError) as exc:
+            if args.hf_auth:
+                raise RuntimeError("Model download failed with --hf-auth. Check your Hugging Face login (hf auth login) or retry without --hf-auth for public GPT-2.") from exc
+            raise RuntimeError(f"Unable to load public model {args.model!r} anonymously. Check network connectivity or the model ID; no Hugging Face login is required for 'gpt2'.") from exc
         calib, ev = load_ids(tok, args)
     model.to(dev).eval()
     blocks = model.transformer.h
