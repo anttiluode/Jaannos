@@ -101,10 +101,12 @@ The constructed-world amplitude was kept at the original value rather than tuned
 
 ```
 pip install -r requirements.txt
-python gpt2_gate.py                 # GPT-2 small, WikiText-2; routes all 24 MLP matrices
+python gpt2_gate.py                 # downloads public GPT-2 and WikiText-2 anonymously; no login
 python gpt2_gate.py --smoke         # tiny random model, no downloads, code-path check only
+python gpt2_gate.py --hf-auth --model YOUR_PRIVATE_GPT2_MODEL   # optional, only if needed
 ```
 
+- **Public Hugging Face downloads:** defaults to explicit anonymous access (`token=False`), even if a stale OAuth token is saved on your computer. Do not use `--hf-auth` for ordinary GPT-2. The script also disables implicit Hub token headers to avoid expired-credential 401s. Model and dataset are cached after first download; it does not bundle them with the repo. `--hf-auth` is an explicit opt-in for private/gated models if your credentials are valid. If your HF login is expired, renew it separately with `hf auth login`—not needed for public GPT-2.
 - It writes `results/gpt2_receipt.json` and prints the matched-budget table and the preregistered
   verdict (PASS / KILL / NEITHER).
 - Settings: core rank 256 plus 8 bands of 64, m = 4, calibration on 32k WikiText-2 train tokens,
